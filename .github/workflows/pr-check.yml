@@ -1,0 +1,123 @@
+name: PR Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  pr-validation:
+    name: PR Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        
+    - name: Validate PR title
+      uses: amannn/action-semantic-pull-request@v5
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        types: |
+          feat
+          fix
+          docs
+          style
+          refactor
+          test
+          chore
+          
+    - name: Check branch naming
+      run: |
+        branch_name="${{ github.head_ref }}"
+        if [[ ! $branch_name =~ ^(feature|fix|hotfix|release)/.+ ]]; then
+          echo "❌ Branch name '$branch_name' does not follow naming convention"
+          echo "Expected: feature/*, fix/*, hotfix/*, release/*"
+          exit 1
+        fi
+        echo "✅ Branch name follows convention"
+        
+    - name: Check for merge conflicts
+      run: |
+        git fetch origin main
+        if git merge-tree $(git merge-base HEAD origin/main) HEAD origin/main | grep -q "<<<<<<< "; then
+          echo "❌ Merge conflicts detected"
+          exit 1
+        fi
+        echo "✅ No merge conflicts"
+        
+    - name: Quick build check
+      run: |
+        echo "🔍 Quick build validation..."
+        cd server && mvn compile -DskipTests -q
+        cd ../ui && npm ci && npm run build
+        echo "✅ Build validation passed"
+        
+    - name: Comment PR
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { data: pr } = await github.rest.pulls.get({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: context.issue.number
+          });
+          
+          const comment = `
+          ## 🔍 PR自动检查结果
+          
+          ✅ **分支命名**: 符合规范
+          ✅ **PR标题**: 符合语义化规范  
+          ✅ **合并冲突**: 无冲突
+          ✅ **快速构建**: 通过
+          
+          **下一步**: 等待详细的CI检查完成
+          
+          ---
+          *由 GitHub Actions 自动生成*
+          `;
+          
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+            body: comment
+          });
+
+  notify-reviewers:
+    name: Notify Reviewers
+    runs-on: ubuntu-latest
+    needs: pr-validation
+    if: github.event.action == 'opened'
+    
+    steps:
+    - name: Request reviews
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // 自动请求代码审查
+          const reviewers = ['maintainer1', 'maintainer2']; // 替换为实际的维护者
+          
+          try {
+            await github.rest.pulls.requestReviewers({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              reviewers: reviewers.filter(r => r !== context.actor) // 排除PR作者
+            });
+            
+            console.log('✅ Review requests sent');
+          } catch (error) {
+            console.log('ℹ️ Could not auto-request reviews:', error.message);
+          } 

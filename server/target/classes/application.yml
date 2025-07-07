@@ -6,17 +6,97 @@ spring:
     name: mall-server
   profiles:
     active: dev
+  
+  # 数据源配置
+  datasource:
+    url: jdbc:postgresql://localhost:5432/mall
+    username: mall
+    password: password
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 20000
+      idle-timeout: 300000
+      
+  # Redis 配置
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+    # MongoDB 配置
+    mongodb:
+      host: localhost
+      port: 27017
+      database: mall
+      username: admin
+      password: password
+      authentication-database: admin
 
+# Actuator配置
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,mappings
   endpoint:
     health:
       show-details: always
+      show-components: always
 
+# SpringDoc OpenAPI 配置
+springdoc:
+  swagger-ui:
+    enabled: true
+
+# 日志配置
 logging:
   level:
     com.mall: DEBUG
     org.springframework: INFO
+    org.springframework.web: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+---
+# 开发环境配置
+spring:
+  config:
+    activate:
+      on-profile: dev
+  
+  # 开发环境数据源
+  datasource:
+    url: jdbc:postgresql://localhost:5432/mall
+    username: mall
+    password: password
+    
+logging:
+  level:
+    root: INFO
+    com.mall: DEBUG
+    org.springframework.web: DEBUG
+    
+---
+# 测试环境配置  
+spring:
+  config:
+    activate:
+      on-profile: test
+      
+  # 测试环境使用H2内存数据库
+  datasource:
+    url: jdbc:h2:mem:testdb
+    username: sa
+    password: password
+    driver-class-name: org.h2.Driver
+    
+  h2:
+    console:
+      enabled: true
